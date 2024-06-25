@@ -1,9 +1,9 @@
 import ase.io
 import ase
 import numpy as np
-
-
 import matplotlib.pyplot as plt
+
+
 
 class StructureEditor:
     def __init__(self,pure_zeolite):
@@ -23,10 +23,24 @@ class StructureEditor:
     def get_system(self):
         return self.zeolite
     
-    def find_neighbours(self,atom_index,r_cutoff):
-        neighbours=np.intersect1d(np.where( self.zeolite.get_all_distances(mic=True)[atom_index] <r_cutoff),
-                        np.where( self.zeolite.get_all_distances(mic=True)[atom_index] != 0))      
+    def find_neighbours(self, atom_index, r_cutoff):
+        """
+        Find the indices of the neighboring atoms within a specified distance cutoff. (Includes MIC).
+
+        Parameters:
+        - atom_index (int): The index of the atom for which to find neighbors.
+        - r_cutoff (float): The distance cutoff for determining neighbors.
+
+        Returns:
+        - neighbours (numpy.ndarray): An array of indices representing the neighboring atoms.
+
+        """
+        neighbours = np.intersect1d(
+            np.where(self.zeolite.get_all_distances(mic=True)[atom_index] < r_cutoff),
+            np.where(self.zeolite.get_all_distances(mic=True)[atom_index] != 0)
+        )
         return neighbours
+    
       
     def atom_selector(self,atom_list,atom):
         """
@@ -106,27 +120,44 @@ class StructureEditor:
     
     
     
-    def defect_site_info(self,site_index):
-        r_SiO_cutoff=1.7
-        suitability=True
-        site_neighbours=self.find_neighbours(site_index,r_SiO_cutoff)
-        site_neighbours_O=self.atom_selector(site_neighbours,"O")
-        
-        if(not len(site_neighbours_O) == 4 ):
-            suitability=False
-        
-        site_neighbours_Si=[]
+    def defect_site_info(self, site_index):
+        """
+        Returns information about a defect site in the zeolite structure.
+
+        Parameters:
+            site_index (int): The index of the defect site (i.e. any lattice Si, Al, etc. atom)
+
+        Returns:
+            tuple: A tuple containing the following information:
+                - suitability (bool): True if the site is suitable for a defect (obeys Lowenstein's rule), False otherwise.
+                - site_neighbours_O (list): A list of indices of oxygen atoms that are neighbors of the defect site.
+                - site_neighbours_Si (list): A list of indices of silicon atoms that are neighbors of the oxygen atoms 
+                                             neighboring the defect site.
+        """
+        r_SiO_cutoff = 1.7
+        suitability = True  # Suitable site for defect (obeys Lowenstein's rule)
+        site_neighbours = self.find_neighbours(site_index, r_SiO_cutoff)
+        site_neighbours_O = self.atom_selector(site_neighbours, "O")
+
+        if not len(site_neighbours_O) == 4:
+            suitability = False
+
+        site_neighbours_Si = []
         for i in site_neighbours_O:
-            O_neighbours=self.find_neighbours(i,r_SiO_cutoff)
-            O_neighbours_Si=self.atom_selector(O_neighbours,"Si")
-        
-            O_neighbours_Si = np.delete( O_neighbours_Si , np.where(O_neighbours_Si==site_index)[0][0] )# This sometimes breaks
-            if (not len(O_neighbours_Si) == 1 ):
-                suitability=False
+            O_neighbours = self.find_neighbours(i, r_SiO_cutoff)  # O atom neighbours of Si
+            O_neighbours_Si = self.atom_selector(O_neighbours, "Si")
+
+            location_of_input_atom=np.where(O_neighbours_Si == site_index)[0]
+            if len(location_of_input_atom)==0:
+                pass #If site is not Si, does not need to remove input index
+            else:
+                O_neighbours_Si = np.delete(O_neighbours_Si, np.where(O_neighbours_Si == site_index)[0][0])  
+            if not len(O_neighbours_Si) == 1:
+                suitability = False
             else:
                 site_neighbours_Si.append(O_neighbours_Si[0])
-            
-        return suitability,site_neighbours_O,site_neighbours_Si
+
+        return suitability, site_neighbours_O, site_neighbours_Si
     
     def add_partially_hydrolysed_site_1():
         pass
@@ -227,27 +258,39 @@ class StructureEditor:
 
 
 
-    def add_Al_defect(self,site_index):
-        
-         
-        suitable,site_neighbours_O,site_neighbours_Si=self.defect_site_info(site_index)   
-        
-        if(not suitable):
-            return
+    def add_Al_defect(self, site_index):
+        """
+        Substitutes an Al atom at a Si site in the zeolite structure and adds an H atom to a neighbouring O atom.
+        Note: the H atom is added first and then the Al atom.
 
-        site_choice=np.random.randint(0,4)
-        OH_site=site_neighbours_O[site_choice]
-        adjacent_Si=site_neighbours_Si[site_choice]
+        Parameters:
+        - site_index (int): The index of the site where the Al defect will be added.
 
-        r_OSi=self.get_system().get_distance(OH_site,adjacent_Si,mic=True,vector=True)
-        r_AlO=self.get_system().get_distance(site_index,OH_site,mic=True,vector=True)
-        r_OH=np.cross(r_OSi,r_AlO)
-        defect_site_pos=self.get_system()[site_index].position
-        H_pos=1.1*r_OH/np.linalg.norm(r_OH)+self.get_system()[OH_site].position
-        self.zeolite.extend(ase.Atoms('H',positions = [H_pos]))
-        #Replace O at Al_site with Al
+        Returns:
+        - bool: True if the defect was successfully added, False otherwise.
+        """
+
+        suitable, site_neighbours_O, site_neighbours_Si = self.defect_site_info(site_index)
+
+        if not suitable:
+            print('site not suitable for AlOH defect')
+            return False
+
+        site_choice = np.random.randint(0, 4)
+        OH_site = site_neighbours_O[site_choice]
+        adjacent_Si = site_neighbours_Si[site_choice]
+
+        r_OSi = self.get_system().get_distance(OH_site, adjacent_Si, mic=True, vector=True)
+        r_AlO = self.get_system().get_distance(site_index, OH_site, mic=True, vector=True)
+        r_OH = np.cross(r_OSi, r_AlO)
+        defect_site_pos = self.get_system()[site_index].position
+        H_pos = 1.1 * r_OH / np.linalg.norm(r_OH) + self.get_system()[OH_site].position
+        self.zeolite.extend(ase.Atoms('H', positions=[H_pos]))
+        # Replace O at Al_site with Al
         del self.zeolite[site_index]
-        self.zeolite.extend(ase.Atoms('Al',positions = [defect_site_pos]))
+        self.zeolite.extend(ase.Atoms('Al', positions=[defect_site_pos]))
+        return True
+    
     
     def add_Al_defect_pair(self,site_index):
         suitable,neighbouring_O_indices,neighbouring_Si_indices=self.defect_site_info(site_index)
@@ -356,7 +399,63 @@ class StructureEditor:
             print("Successully added Al defects")
         else:
             print("Failed after adding ",n_success ," Al defects.")        
+    
+
+    def fill_majority_Al_defects(self, Al_Si_ratio):
+        """
+        Fills the zeolite structure with chains of NN neighbour Al defects based on the given Al/Si ratio.
+
+        Parameters:
+            Al_Si_ratio (float): The desired Al/Si ratio for the zeolite structure.
+
+        Returns:
+            int: The number of Al defects added to the zeolite structure.
+        """
+        num_Al = 0
         
+        possible_defect_sites = self.atom_selector(np.array(range(0, len(self.zeolite))), "Si")
+        total_framework_sites = len(possible_defect_sites)
+
+        start_site = np.random.choice(possible_defect_sites)
+        target_site = start_site
+        print(total_framework_sites, ' Si initialy')
+        filling = True
+
+        while filling:
+            successful_Al_substitution = self.add_Al_defect(target_site)
+
+            #If couldn't add Al defect, picks another from NN 
+
+            if successful_Al_substitution:
+                num_Al += 1
+
+            if (Al_Si_ratio != 1 and num_Al / (total_framework_sites - num_Al) >= Al_Si_ratio):
+                filling = False
+                
+            # Picking a new Si site to add Al to
+            if filling:
+                new_NN_neighbours = self.find_NN_neighbours(-1)   
+                new_NN_neighbours= self.atom_selector(new_NN_neighbours,"Si") 
+                # If no NN Si sites, finds a new Si site to start chain
+                if (len(new_NN_neighbours) == 0 or successful_Al_substitution == False):
+                    Al_site_indices = self.atom_selector(np.array(range(len(self.zeolite))), "Al")
+                    filling = False  # If no NN Si sites, stops filling
+                    for index in Al_site_indices:
+                        NN_neighbours = self.find_NN_neighbours(index)
+                        NN_neighbours= self.atom_selector(NN_neighbours,"Si") 
+                        if len(NN_neighbours) != 0:
+                            target_site = np.random.choice(NN_neighbours)
+                            filling = True
+                            break
+                else:
+                    target_site = np.random.choice(new_NN_neighbours)
+
+            print(num_Al)
+            print(num_Al/(total_framework_sites - num_Al))
+
+        return num_Al
+
+
         
     def add_silanol_defect(self,site_index):
         length_OH=1.1#O-H bond length
@@ -379,8 +478,8 @@ class StructureEditor:
             self.zeolite.extend(ase.Atoms('H',positions = [H_pos]))
         
         del self.zeolite[site_index]
-        
-        
+            
+            
     def fill_silanol_defects(self,n_add,n_trials=100):
         
         if n_add==0: 
@@ -415,7 +514,37 @@ class StructureEditor:
         else:
             print("Failed after adding ",n_success ," Silanol defects.")        
             
-        
+
+    def find_NN_neighbours(self, atom_index):
+        """
+        Finds the next nearest (NN) neighbours of a given atom.
+
+        Parameters:
+        - atom_index (int): The index of the atom for which to find NN neighbours.
+
+        Returns:
+        - NN_neighbours_Si (numpy.ndarray): An array containing the (int) indices of the NN neighbours.
+
+        """
+
+        site_neighbours_Si = self.defect_site_info(atom_index)[2]
+        NN_neighbours_Si = np.array([])
+
+        for site in site_neighbours_Si:
+            site_NN_neighbours = self.defect_site_info(site)[2]
+            NN_neighbours_Si = np.append(NN_neighbours_Si, site_NN_neighbours)
+
+        NN_neighbours_Si = np.unique(np.array(NN_neighbours_Si))
+
+        # Deleting input site from list
+        if len(np.where(NN_neighbours_Si == atom_index)[0]) == 0:
+            pass  # If site is not Si, does not need to remove input index
+        else:
+            NN_neighbours_Si = np.delete(NN_neighbours_Si, np.where(NN_neighbours_Si == atom_index)[0][0])
+
+        return NN_neighbours_Si.astype(int)
+
+
         
     def get_image_replicas(self,atom_index):
         """

@@ -3,3 +3,6 @@ LJ_sigmas.csv
 README.md  
 topologies\
 .vscode
+*.ipynb
+__pycache__\
+.ipynb_checkpoints\
