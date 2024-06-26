@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 class StructureEditor:
     def __init__(self,pure_zeolite):
         self.zeolite = pure_zeolite
+        #Adding tags to atoms
+        self.zeolite.set_tags(np.arange(0,len(self.zeolite),1))
 
         
     def set_periodicity(self,cell,pbc=[True,True,True]):
@@ -258,13 +260,16 @@ class StructureEditor:
 
 
 
-    def add_Al_defect(self, site_index):
+    def add_Al_defect(self, site_index, tag=None):
         """
         Substitutes an Al atom at a Si site in the zeolite structure and adds an H atom to a neighbouring O atom.
+        Will only add the defect if the site is suitable (i.e. obeys Lowenstein's rule).
         Note: the H atom is added first and then the Al atom.
 
         Parameters:
         - site_index (int): The index of the site where the Al defect will be added.
+        - tag (int): The tag to assign to the H atom (tag+1 assigned to Al). (By default, the tag is not set.)
+
 
         Returns:
         - bool: True if the defect was successfully added, False otherwise.
@@ -285,10 +290,18 @@ class StructureEditor:
         r_OH = np.cross(r_OSi, r_AlO)
         defect_site_pos = self.get_system()[site_index].position
         H_pos = 1.1 * r_OH / np.linalg.norm(r_OH) + self.get_system()[OH_site].position
-        self.zeolite.extend(ase.Atoms('H', positions=[H_pos]))
+        if tag is None:
+            new_H = ase.Atoms('H', positions=[H_pos])
+        else:
+            new_H=ase.Atoms('H', positions=[H_pos],tags=tag)
+        self.zeolite.extend(new_H)
         # Replace O at Al_site with Al
         del self.zeolite[site_index]
-        self.zeolite.extend(ase.Atoms('Al', positions=[defect_site_pos]))
+        if tag is None:
+            new_Al=ase.Atoms('Al', positions=[defect_site_pos])
+        else:
+            new_Al=ase.Atoms('Al', positions=[defect_site_pos],tags=tag+1)
+        self.zeolite.extend(new_Al)
         return True
     
     
@@ -403,7 +416,7 @@ class StructureEditor:
 
     def fill_majority_Al_defects(self, Al_Si_ratio):
         """
-        Fills the zeolite structure with chains of NN neighbour Al defects based on the given Al/Si ratio.
+        Fills a purely silicious zeolite structure with chains of NN neighbour Al defects up to a given Al/Si ratio.
 
         Parameters:
             Al_Si_ratio (float): The desired Al/Si ratio for the zeolite structure.
@@ -411,51 +424,82 @@ class StructureEditor:
         Returns:
             int: The number of Al defects added to the zeolite structure.
         """
-        num_Al = 0
-        
-        possible_defect_sites = self.atom_selector(np.array(range(0, len(self.zeolite))), "Si")
-        total_framework_sites = len(possible_defect_sites)
 
-        start_site = np.random.choice(possible_defect_sites)
-        target_site = start_site
-        print(total_framework_sites, ' Si initialy')
-        filling = True
+        def start_new_chain():
+            #need to implement
+            #If cannot start new chain - breaks while loop
+            #Returns target site index for new chain start
+            possible_sites = self.atom_selector(np.arange(0, len(self.zeolite), 1), "Si")
+            unsuitable_Si_site_indices=self.get_indices(unsuitable_Si_sites)
+            possible_sites = possible_sites[~np.isin(possible_sites, unsuitable_Si_site_indices)]
+            
+            for site in possible_sites:
+                site_suitability = self.defect_site_info(site)[0]
+                if site_suitability:
+                    return site
+            #If no suitable site found, zeolite maximally filled
+            return None    
+        
+        #Initialising variables
+        num_Al = 0
+        num_atoms=len(self.zeolite)
+        initial_Si_sites = self.atom_selector(np.arange(0,num_atoms,1), "Si") 
+        target_site = np.random.choice(initial_Si_sites)
+        filling = True # True when not reached desired Al/Si ratio
+        unsuitable_Si_sites = np.array([])
+        possible_Al_sites = np.array([])
 
         while filling:
-            successful_Al_substitution = self.add_Al_defect(target_site)
+            
+            #Adding Al at target site 
+            successful_Al_substitution = self.add_Al_defect(target_site, tag=num_atoms)
+            if not successful_Al_substitution: 
+                #This might happen as a previously suitable site may have become unsuitable due to new Al atoms
+                possible_Al_sites=possible_Al_sites[possible_Al_sites!=self.get_tags(target_site)]
+                unsuitable_Si_sites=np.append(unsuitable_Si_sites,self.get_tags(target_site))
+            else:             
+                num_Al += 1   
+                num_atoms+=1    
 
-            #If couldn't add Al defect, picks another from NN 
+            #If Al/Si ratio reached, stops filling
+            if (Al_Si_ratio != 1 and num_Al / (len(initial_Si_sites) - num_Al) >= Al_Si_ratio):
+                filling = False 
+                break
+            
+            #Adding neighbours of added Al to unsuitable site list
+            added_Al_index=num_atoms-1
+            neighbours=self.get_tags(self.defect_site_info(added_Al_index)[2])
+            unsuitable_Si_sites=np.append(unsuitable_Si_sites,neighbours)
 
-            if successful_Al_substitution:
-                num_Al += 1
+            #Finding (Lowenstein-suitable) indices of NN neighbours of added Al
+            new_NN_neighbours = self.find_NN_neighbours(added_Al_index)
+            suitable_sites=np.array([self.defect_site_info(index)[0]==True for index in new_NN_neighbours])   
+            suitable_new_NN_neighbours=new_NN_neighbours[suitable_sites]
+            unsuitable_new_NN_neighbours=new_NN_neighbours[~suitable_sites]
 
-            if (Al_Si_ratio != 1 and num_Al / (total_framework_sites - num_Al) >= Al_Si_ratio):
-                filling = False
+            #Adding non-Lowenstein NN neighobours to unsuitable Si sites list
+            unsuitable_new_NN_neighbour_tags=self.get_tags(unsuitable_new_NN_neighbours)
+            unsuitable_Si_sites=np.append(unsuitable_Si_sites,unsuitable_new_NN_neighbour_tags)
+            unsuitable_Si_sites=np.unique(unsuitable_Si_sites)
+
+            #Adding Lowenstein compatible NN neighbours to possible Al sites
+            new_possible_Al_sites= self.get_tags(suitable_new_NN_neighbours)
+            possible_Al_sites=np.append(possible_Al_sites,new_possible_Al_sites)
+            possible_Al_sites=np.unique(possible_Al_sites)
+
+            #Picking new target; if no new available targets, tries to start new chain
+            if len(possible_Al_sites) == 0: 
+                target_site = start_new_chain()
+                if target_site==None:
+                    filling = False
+            else:
                 
-            # Picking a new Si site to add Al to
-            if filling:
-                new_NN_neighbours = self.find_NN_neighbours(-1)   
-                new_NN_neighbours= self.atom_selector(new_NN_neighbours,"Si") 
-                # If no NN Si sites, finds a new Si site to start chain
-                if (len(new_NN_neighbours) == 0 or successful_Al_substitution == False):
-                    Al_site_indices = self.atom_selector(np.array(range(len(self.zeolite))), "Al")
-                    filling = False  # If no NN Si sites, stops filling
-                    for index in Al_site_indices:
-                        NN_neighbours = self.find_NN_neighbours(index)
-                        NN_neighbours= self.atom_selector(NN_neighbours,"Si") 
-                        if len(NN_neighbours) != 0:
-                            target_site = np.random.choice(NN_neighbours)
-                            filling = True
-                            break
-                else:
-                    target_site = np.random.choice(new_NN_neighbours)
+                target_site_tag = np.random.choice(possible_Al_sites)
+                target_site = self.get_indices([target_site_tag])[0]
+                possible_Al_sites=possible_Al_sites[possible_Al_sites!=target_site_tag]
 
-            print(num_Al)
-            print(num_Al/(total_framework_sites - num_Al))
-
+            
         return num_Al
-
-
         
     def add_silanol_defect(self,site_index):
         length_OH=1.1#O-H bond length
@@ -568,5 +612,32 @@ class StructureEditor:
             print(len(deleted_atoms)," mirror replica atoms deleted.")
 
         
+    def get_tags(self, indices):
+        """
+        Returns the tags of the zeolite at the specified indices.
 
-        
+        Parameters:
+        - indices (array): An arrray of indices specifying the zeolite(s) to retrieve tags from.
+
+        Returns:
+        - array: An array of tags corresponding to the zeolite(s) at the specified indices.
+        """
+        return self.zeolite.get_tags()[indices]
+
+    def get_indices(self, tags):
+        """
+        Returns the indices of the given tags in the zeolite object.
+
+        Parameters:
+        tags (array): An array of tags to search for.
+
+        Returns:
+        list: An array of indices corresponding to the given tags.
+        """
+
+        tags=np.array(tags)
+        return np.array( [np.where(self.zeolite.get_tags() == tag)[0][0] for tag in tags] ) 
+
+    
+    
+
