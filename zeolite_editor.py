@@ -404,7 +404,7 @@ class StructureEditor:
             print("Failed after adding ",n_success ," neighbour Al defects.")    
     
     
-    def fill_Al_defects(self,n_add,n_trials=100):
+    def fill_Al_defects(self,n_add,n_trials=100,printing=False):
         
         if n_add == 0: 
             return
@@ -433,28 +433,31 @@ class StructureEditor:
             failure = n_attempts == n_trials or len(possible_defect_sites) == 0
             if(success or failure):
                 filling = False
-        if(success):
-            print("Successully added Al defects")
-        else:
-            print("Failed after adding ",n_success ," Al defects.")        
+
+        if printing==True:
+            if(success):
+                print("Successully added Al defects")
+            else:
+                print("Failed after adding ",n_success ," Al defects.")        
     
 
-    def fill_majority_Al_defects(self, Al_Si_ratio):
+    def fill_majority_Al_defects(self, Al_to_max_Al_ratio=None,printing=False):
         """
-        Fills a purely silicious zeolite structure with chains of NN neighbour Al defects up to a given Al/Si ratio.
+        Fills a purely silicious zeolite structure with chains of NN neighbour Al defects. Then removes random Al sites to reach desired Al filling.
 
         Parameters:
-            Al_Si_ratio (float): The desired Al/Si ratio for the zeolite structure.
+            Al_to_max_Al_ratio (float): The desired fraction of added Al sites to remove after filling.
 
         Returns:
-            int: The number of Al defects added to the zeolite structure.
+            int or tuple: If `Al_to_max_Al_ratio` is None, returns the number of Al defects added to the zeolite structure.
+                         If `Al_to_max_Al_ratio` is not None, returns a tuple containing the maximum number of Al defects,
+                         the initial number of Si sites, and the number of Al defects removed to reach the desired Al filling.
         """
 
         def start_new_chain():
-            #need to implement
+       
             #If cannot start new chain - breaks while loop
             #Returns target site index for new chain start
-            possible_sites = self.atom_selector(np.arange(0, len(self.zeolite), 1), "Si")
             unsuitable_Si_site_indices=self.get_indices(unsuitable_Si_sites)
             possible_sites = possible_sites[~np.isin(possible_sites, unsuitable_Si_site_indices)]
             
@@ -467,6 +470,8 @@ class StructureEditor:
         
         #Initialising variables
         num_Al = 0
+        possible_sites = self.atom_selector(np.arange(0, len(self.zeolite), 1), "Si")
+        initial_num_Si=len(possible_sites) 
         num_atoms=len(self.zeolite)
         initial_Si_sites = self.atom_selector(np.arange(0,num_atoms,1), "Si") 
         target_site = np.random.choice(initial_Si_sites)
@@ -484,12 +489,9 @@ class StructureEditor:
                 unsuitable_Si_sites=np.append(unsuitable_Si_sites,self.get_tags(target_site))
             else:             
                 num_Al += 1   
-                num_atoms+=1    
-
-            #If Al/Si ratio reached, stops filling
-            if (Al_Si_ratio != 1 and num_Al / (len(initial_Si_sites) - num_Al) >= Al_Si_ratio):
-                filling = False 
-                break
+                num_atoms+=1   
+                if printing==True:
+                    print(num_Al," Al sites added") 
             
             #Adding neighbours of added Al to unsuitable site list
             added_Al_index=num_atoms-1
@@ -518,13 +520,28 @@ class StructureEditor:
                 if target_site==None:
                     filling = False
             else:
-                
                 target_site_tag = np.random.choice(possible_Al_sites)
                 target_site = self.get_indices([target_site_tag])[0]
                 possible_Al_sites=possible_Al_sites[possible_Al_sites!=target_site_tag]
+        
 
-            
-        return num_Al
+        #Finishing or removing some Al sites
+        if Al_to_max_Al_ratio is None:
+            return num_Al
+        else:
+            #Removing Al atoms to reach desired Al/Si ratio
+            max_Al=num_Al
+            num_Al_removed=int(max_Al-max_Al*Al_to_max_Al_ratio)
+
+            added_Al_site_indices=self.atom_selector(np.array(range(0,len(self.zeolite))),"Al")
+            Al_sites_to_remove_indices=np.random.choice(added_Al_site_indices,num_Al_removed)
+            Al_sites_to_remove_tags=self.get_tags(Al_sites_to_remove_indices)
+
+            for tag in Al_sites_to_remove_tags:
+                self.remove_Al_defect(self.get_indices([tag])[0])
+
+
+        return max_Al,initial_num_Si,num_Al_removed
         
     def add_silanol_defect(self,site_index):
         length_OH=1.1#O-H bond length
