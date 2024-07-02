@@ -304,6 +304,31 @@ class StructureEditor:
         self.zeolite.extend(new_Al)
         return True
     
+    def remove_Al_defect(self, site_index, tag=None):
+        """
+        Removes an Al heteroatom and corresponding H from the zeolite structure and replaces it with a Si atom.
+
+        Args:
+            site_index (int): The index of the Al atom of the defect site in the zeolite structure.
+            tag (str, optional): An optional tag for the new Si atom. Defaults to None (adds no tag).
+
+        Returns:
+            None
+        """
+        # Turns Al into Si
+        Al_pos = self.zeolite[site_index].position
+
+        if tag is None:
+            new_Si = ase.Atoms('Si', positions=[Al_pos])
+        else:
+            new_Si = ase.Atoms('Si', positions=[Al_pos], tags=tag)
+
+        self.zeolite.extend(new_Si)
+
+        # Remove Al atom and H atom
+        self.remove_atoms([site_index])
+        self.remove_atoms([site_index-1])
+        pass
     
     def add_Al_defect_pair(self,site_index):
         suitable,neighbouring_O_indices,neighbouring_Si_indices=self.defect_site_info(site_index)
