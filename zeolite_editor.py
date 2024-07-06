@@ -55,8 +55,8 @@ class StructureEditor:
     def find_max_water_loading(self,r_cutoff=10,successive_loading_failiures_cutoff=100):
         unloaded_system_size=len(self.zeolite)
  
-        LJ_sigmas=np.loadtxt("../LJ_sigmas.csv",delimiter=",",dtype="float",usecols=1,skiprows=1)
-        LJ_symbols=np.loadtxt("../LJ_sigmas.csv",delimiter=",",dtype="str",usecols=0,skiprows=1)
+        LJ_sigmas=np.loadtxt("/data/fast-pc-02/hr492/ZeoliteEditor/LJ_sigmas.csv",delimiter=",",dtype="float",usecols=1,skiprows=1)
+        LJ_symbols=np.loadtxt("/data/fast-pc-02/hr492/ZeoliteEditor/LJ_sigmas.csv",delimiter=",",dtype="str",usecols=0,skiprows=1)
         
         n_added=0            
         successive_failiure_counter=0
@@ -141,6 +141,9 @@ class StructureEditor:
         site_neighbours = self.find_neighbours(site_index, r_SiO_cutoff)
         site_neighbours_O = self.atom_selector(site_neighbours, "O")
 
+        if self.zeolite[site_index].symbol == "Al":
+            suitability = False
+
         if not len(site_neighbours_O) == 4:
             suitability = False
 
@@ -196,8 +199,8 @@ class StructureEditor:
         if n_add == 0 :
             return
         
-        LJ_sigmas=np.loadtxt("/data/fast-pc-02/hr492/ZeoliteRevolution/LJ_sigmas.csv",delimiter=",",dtype="float",usecols=1,skiprows=1)
-        LJ_symbols=np.loadtxt("/data/fast-pc-02/hr492/ZeoliteRevolution/LJ_sigmas.csv",delimiter=",",dtype="str",usecols=0,skiprows=1)
+        LJ_sigmas=np.loadtxt("/data/fast-pc-02/hr492/ZeoliteEditor/LJ_sigmas.csv",delimiter=",",dtype="float",usecols=1,skiprows=1)
+        LJ_symbols=np.loadtxt("/data/fast-pc-02/hr492/ZeoliteEditor/LJ_sigmas.csv",delimiter=",",dtype="str",usecols=0,skiprows=1)
         
         n_attempts=0
         n_added=0
@@ -454,8 +457,8 @@ class StructureEditor:
                          the initial number of Si sites, and the number of Al defects removed to reach the desired Al filling.
         """
 
-        def start_new_chain():
-       
+        def start_new_chain(possible_sites):
+            
             #If cannot start new chain - breaks while loop
             #Returns target site index for new chain start
             unsuitable_Si_site_indices=self.get_indices(unsuitable_Si_sites)
@@ -482,6 +485,9 @@ class StructureEditor:
         while filling:
             
             #Adding Al at target site 
+            print(target_site)
+            print(self.zeolite[target_site].symbol)
+            print(self.zeolite[target_site].position)
             successful_Al_substitution = self.add_Al_defect(target_site, tag=num_atoms)
             if not successful_Al_substitution: 
                 #This might happen as a previously suitable site may have become unsuitable due to new Al atoms
@@ -500,23 +506,26 @@ class StructureEditor:
 
             #Finding (Lowenstein-suitable) indices of NN neighbours of added Al
             new_NN_neighbours = self.find_NN_neighbours(added_Al_index)
-            suitable_sites=np.array([self.defect_site_info(index)[0]==True for index in new_NN_neighbours])   
-            suitable_new_NN_neighbours=new_NN_neighbours[suitable_sites]
-            unsuitable_new_NN_neighbours=new_NN_neighbours[~suitable_sites]
+            if len(new_NN_neighbours) == 0: 
+                pass
+            else:
+                suitable_sites=np.array([self.defect_site_info(index)[0]==True for index in new_NN_neighbours])  
+                suitable_new_NN_neighbours=new_NN_neighbours[suitable_sites]
+                unsuitable_new_NN_neighbours=new_NN_neighbours[~suitable_sites]
 
-            #Adding non-Lowenstein NN neighobours to unsuitable Si sites list
-            unsuitable_new_NN_neighbour_tags=self.get_tags(unsuitable_new_NN_neighbours)
-            unsuitable_Si_sites=np.append(unsuitable_Si_sites,unsuitable_new_NN_neighbour_tags)
-            unsuitable_Si_sites=np.unique(unsuitable_Si_sites)
+                #Adding non-Lowenstein NN neighobours to unsuitable Si sites list
+                unsuitable_new_NN_neighbour_tags=self.get_tags(unsuitable_new_NN_neighbours)
+                unsuitable_Si_sites=np.append(unsuitable_Si_sites,unsuitable_new_NN_neighbour_tags)
+                unsuitable_Si_sites=np.unique(unsuitable_Si_sites)
 
-            #Adding Lowenstein compatible NN neighbours to possible Al sites
-            new_possible_Al_sites= self.get_tags(suitable_new_NN_neighbours)
-            possible_Al_sites=np.append(possible_Al_sites,new_possible_Al_sites)
-            possible_Al_sites=np.unique(possible_Al_sites)
+                #Adding Lowenstein compatible NN neighbours to possible Al sites
+                new_possible_Al_sites= self.get_tags(suitable_new_NN_neighbours)
+                possible_Al_sites=np.append(possible_Al_sites,new_possible_Al_sites)
+                possible_Al_sites=np.unique(possible_Al_sites)
 
             #Picking new target; if no new available targets, tries to start new chain
             if len(possible_Al_sites) == 0: 
-                target_site = start_new_chain()
+                target_site = start_new_chain(possible_sites)
                 if target_site==None:
                     filling = False
             else:
@@ -536,6 +545,7 @@ class StructureEditor:
             added_Al_site_indices=self.atom_selector(np.array(range(0,len(self.zeolite))),"Al")
             Al_sites_to_remove_indices=np.random.choice(added_Al_site_indices,num_Al_removed)
             Al_sites_to_remove_tags=self.get_tags(Al_sites_to_remove_indices)
+            Al_sites_to_remove_tags=np.unique(Al_sites_to_remove_tags)
 
             for tag in Al_sites_to_remove_tags:
                 self.remove_Al_defect(self.get_indices([tag])[0])
