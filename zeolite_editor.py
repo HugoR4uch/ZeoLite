@@ -136,7 +136,7 @@ class StructureEditor:
                 - site_neighbours_Si (list): A list of indices of silicon atoms that are neighbors of the oxygen atoms 
                                              neighboring the defect site.
         """
-        r_SiO_cutoff = 1.7
+        r_SiO_cutoff = 1.7 
         suitability = True  # Suitable site for defect (obeys Lowenstein's rule)
         site_neighbours = self.find_neighbours(site_index, r_SiO_cutoff)
         site_neighbours_O = self.atom_selector(site_neighbours, "O")
@@ -461,13 +461,24 @@ class StructureEditor:
             
             #If cannot start new chain - breaks while loop
             #Returns target site index for new chain start
+            if printing==True:
+                print("Starting new chain")
+            
             unsuitable_Si_site_indices=self.get_indices(unsuitable_Si_sites)
             possible_sites = possible_sites[~np.isin(possible_sites, unsuitable_Si_site_indices)]
             
+            found_site_for_new_chain=False
+
             for site in possible_sites:
                 site_suitability = self.defect_site_info(site)[0]
                 if site_suitability:
+                    if printing==True:
+                        print('Found new chain start.')
                     return site
+                
+            
+            if printing == True and found_site_for_new_chain==False:
+                print('Could not find new chain start. Zeolite maximally filled.')
             #If no suitable site found, zeolite maximally filled
             return None    
         
@@ -485,9 +496,9 @@ class StructureEditor:
         while filling:
             
             #Adding Al at target site 
-            print(target_site)
-            print(self.zeolite[target_site].symbol)
-            print(self.zeolite[target_site].position)
+            if printing == True:
+                print('Trial stie element: ',self.zeolite[target_site].symbol)
+                print('Trial site position: ',self.zeolite[target_site].position)
             successful_Al_substitution = self.add_Al_defect(target_site, tag=num_atoms)
             if not successful_Al_substitution: 
                 #This might happen as a previously suitable site may have become unsuitable due to new Al atoms
