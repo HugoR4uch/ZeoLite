@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 class StructureEditor:
     def __init__(self,pure_zeolite):
-        self.zeolite = np.copy(pure_zeolite)
+        self.zeolite = pure_zeolite.copy()
         #Adding tags to atoms
         self.zeolite.set_tags(np.arange(0,len(self.zeolite),1))
 
