@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 class StructureEditor:
     def __init__(self,pure_zeolite):
-        self.zeolite = pure_zeolite
+        self.zeolite = np.copy(pure_zeolite)
         #Adding tags to atoms
         self.zeolite.set_tags(np.arange(0,len(self.zeolite),1))
 
@@ -46,7 +46,7 @@ class StructureEditor:
       
     def atom_selector(self,atom_list,atom):
         """
-        Outputs np.array of subset of indices from np.array 'atom_list' of type 'atom'
+        Outputs np.array of subset of indices from np.array 'atom_list' of type 'atom'.
         """
         filtered_list = atom_list[self.zeolite[atom_list].symbols==atom]
         return filtered_list
@@ -136,7 +136,7 @@ class StructureEditor:
                 - site_neighbours_Si (list): A list of indices of silicon atoms that are neighbors of the oxygen atoms 
                                              neighboring the defect site.
         """
-        r_SiO_cutoff = 1.7 
+        r_SiO_cutoff = 1.7
         suitability = True  # Suitable site for defect (obeys Lowenstein's rule)
         site_neighbours = self.find_neighbours(site_index, r_SiO_cutoff)
         site_neighbours_O = self.atom_selector(site_neighbours, "O")
